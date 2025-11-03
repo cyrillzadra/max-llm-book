@@ -4,32 +4,15 @@
     Learn to combine attention, MLP, layer normalization, and residual connections into a complete transformer block.
 </div>
 
-## What is a transformer block?
+## Implementing the transformer block
 
-In this section you will build the `Block` class that combines all previous components into a complete transformer block. This is the fundamental repeating unit that makes up GPT-2.
+In this step you'll build the `Block` class that combines all previous components into a complete transformer block. This is the fundamental repeating unit that makes up GPT-2.
 
-Each block has two sub-layers:
-1. Multi-head attention (with layer norm and residual)
-2. Feed-forward MLP (with layer norm and residual)
+Each block has two sub-layers: multi-head attention (with layer norm and residual) and feed-forward MLP (with layer norm and residual). The pattern for each sub-layer is `x = x + sublayer(layer_norm(x))`.
 
-The pattern for each sub-layer:
-```
-x = x + sublayer(layer_norm(x))
-```
+GPT-2 stacks 12 identical transformer blocks. The pre-norm pattern (normalize before sublayer) is more stable than post-norm for deep networks, enabling effective training without careful initialization or learning rate warmup.
 
-GPT-2 stacks 12 identical transformer blocks (for the base model). Each block independently processes the sequence, gradually refining the representations. Early blocks might capture low-level patterns like word associations, while later blocks capture more abstract relationships and long-range dependencies.
-
-## Why this architecture?
-
-**1. Pre-norm Stability**: The pre-norm pattern (normalize before sublayer) is more stable than post-norm (normalize after sublayer + residual). In pre-norm, layer normalization sees the full range of activations before they're processed, preventing extreme values from destabilizing training. This is crucial for training deep networks with 12+ layers. Research shows pre-norm allows training deeper transformers without careful initialization or learning rate warmup.
-
-**2. Attention + MLP Complementarity**: Attention and MLP serve different purposes. Attention performs context-dependent mixing—it routes information between positions based on learned relevance patterns. The MLP processes each position independently with the same weights, performing context-independent transformations. Together, they provide both positional mixing (attention) and per-position computation (MLP). This combination is essential for the model's expressiveness.
-
-**3. Residual Paths Preserve Information**: With two residual connections per block and 12 blocks, there are 24 addition operations in the forward pass. This creates exponentially many paths through the network (2^24 possible combinations of which sublayers to traverse). During training, gradients can flow directly through these skip connections, enabling efficient learning in very deep networks. The residual paths ensure that information from early layers (like positional embeddings) can directly influence later layers.
-
-**4. Modular Composition**: Each transformer block is identical in structure, differing only in learned parameters. This modularity simplifies implementation, enables easy scaling (just change the number of blocks), and allows interesting properties like progressive training (training shallow networks then adding blocks) or block-wise analysis (measuring each block's contribution).
-
-### Key concepts
+## Understanding the architecture
 
 **Pre-norm Architecture**:
 - Pattern: `output = input + sublayer(layer_norm(input))`
@@ -63,7 +46,7 @@ GPT-2 stacks 12 identical transformer blocks (for the base model). Each block in
 - `mlp`: Feed-forward network
 - Matches original GPT-2 implementation for weight loading
 
-### Implementation tasks (`step_11.py`)
+## Implementation tasks
 
 1. **Import Required Modules** (Lines 13-18):
    - Import `Module` from `max.nn.module_v3`
@@ -93,7 +76,7 @@ GPT-2 stacks 12 identical transformer blocks (for the base model). Each block in
 5. **Return Output** (Line 81):
    - Return the final `hidden_states`
 
-**Implementation**:
+**Implementation** (`step_11.py`):
 
 ```python
 {{#include ../../steps/step_11.py}}
@@ -101,10 +84,8 @@ GPT-2 stacks 12 identical transformer blocks (for the base model). Each block in
 
 ### Validation
 
-Run `pixi run s11`
+Run `pixi run s11` to verify your implementation.
 
 **Reference**: `solutions/solution_11.py`
-
----
 
 **Next**: In [Step 12](./step_12.md), you'll stack 12 transformer blocks together to create the complete GPT-2 model architecture.

@@ -31,7 +31,6 @@ test-all = "python tests/test.step_01.py && python tests/test.step_02.py && pyth
 
 # Format python
 fmt = "ruff format ."
-fmt-docs = "blacken-docs book/src/*"
 
 [dependencies]
 modular = "25.7.*"
@@ -40,4 +39,3 @@ pytorch = ">=2.8.0,<3"
 numpy = ">=2.3.3,<3"
 mdbook = ">=0.4.0"
 ruff = ">=0.14.1,<0.15"
-blacken-docs = ">=1.20.0,<2"

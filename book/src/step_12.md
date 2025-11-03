@@ -4,32 +4,15 @@
     Learn to stack 12 transformer blocks with embeddings and final normalization to create the complete GPT-2 model.
 </div>
 
-## What is model stacking?
+## Implementing model stacking
 
-In this section you will create the `GPT2Model` class that stacks 12 transformer blocks with embeddings to form the complete GPT-2 architecture.
+In this step you'll create the `GPT2Model` class that stacks 12 transformer blocks with embeddings to form the complete GPT-2 architecture.
 
-The flow:
-1. Token IDs → token embeddings (lookup table)
-2. Add position embeddings
-3. Pass through 12 transformer blocks in sequence
-4. Apply final layer normalization
-5. Output: contextualized representations for each token
+The flow is: token IDs → token embeddings (lookup table), add position embeddings, pass through 12 transformer blocks in sequence, apply final layer normalization, output contextualized representations for each token.
 
-Each block processes the output of the previous block, progressively refining the representations from simple embeddings to rich contextual understanding.
+Each block processes the output of the previous block, progressively refining representations from simple embeddings to rich contextual understanding. Stacking multiple layers creates a hierarchy where early blocks learn surface patterns, middle blocks capture syntax, and later blocks encode semantics.
 
-This stacking creates a hierarchy of representations. Early blocks might learn simple patterns like word associations, middle blocks capture syntactic structure, and later blocks encode high-level semantic and pragmatic information. The depth (12 layers) is crucial—shallow networks cannot capture the complexity of natural language.
-
-## Why stack 12 blocks?
-
-**1. Hierarchical Representation Learning**: Each transformer block learns features at a different level of abstraction. Research analyzing GPT models shows that early layers capture surface-level patterns (e.g., "the" is often followed by a noun), middle layers learn syntactic structures (e.g., subject-verb agreement across long distances), and deep layers encode semantic relationships and world knowledge. This hierarchy emerges from training, not explicit design—the model learns to use depth for abstraction.
-
-**2. Increased Model Capacity**: More layers mean more parameters to learn. GPT-2 base with 12 layers has ~117M parameters. Doubling layers roughly doubles parameters, allowing the model to memorize more patterns and generalize better. However, depth provides capacity more efficiently than width—a 12-layer model with 768 dimensions outperforms a 6-layer model with 1536 dimensions despite similar parameter counts, because depth enables hierarchical feature learning.
-
-**3. Long-Range Dependencies**: Each attention layer has a finite receptive field determined by sequence length, but stacking layers increases the effective receptive field. Information can propagate across the entire sequence through multiple layers. A token at position 0 can influence position 100 through a chain of attention connections across 12 layers. This multi-hop reasoning is essential for understanding long documents.
-
-**4. Residual Gradient Flow**: With residual connections in each block, gradients can flow through many paths—some skipping blocks, others passing through them. This creates an implicit ensemble of networks of varying depths. During training, the model can learn to use different depth paths for different patterns, improving robustness and trainability.
-
-### Key concepts
+## Understanding the stacking
 
 **Sequential Composition**:
 - [`Sequential(*modules)`](https://docs.modular.com/max/api/python/nn/module_v3#max.nn.module_v3.Sequential) chains modules
@@ -61,7 +44,23 @@ This stacking creates a hierarchy of representations. Early blocks might learn s
 - `config.vocab_size = 50257`: Vocabulary size
 - `config.n_positions = 1024`: Maximum sequence length
 
-### Implementation tasks (`step_12.py`)
+<div class="note">
+<div class="title">MAX operations</div>
+
+You'll use the following MAX operations to complete this task:
+
+**Module composition**:
+- [`Sequential(*modules)`](https://docs.modular.com/max/api/python/nn/module_v3#max.nn.module_v3.Sequential): Chains transformer blocks in sequence
+
+**Embeddings**:
+- [`Embedding(num_embeddings, dim)`](https://docs.modular.com/max/api/python/nn/module_v3#max.nn.module_v3.Embedding): Token and position embeddings
+
+**Position generation**:
+- [`Tensor.arange(seq_length, dtype, device)`](https://docs.modular.com/max/api/python/experimental/tensor#max.experimental.tensor.Tensor.arange): Creates position indices
+
+</div>
+
+## Implementation tasks
 
 1. **Import Required Modules** (Lines 13-18):
    - Import `Tensor` from `max.experimental.tensor`
@@ -94,7 +93,7 @@ This stacking creates a hierarchy of representations. Early blocks might learn s
    - Final norm: `x = self.ln_f(x)`
    - Return `x`
 
-**Implementation**:
+**Implementation** (`step_12.py`):
 
 ```python
 {{#include ../../steps/step_12.py}}
@@ -102,10 +101,8 @@ This stacking creates a hierarchy of representations. Early blocks might learn s
 
 ### Validation
 
-Run `pixi run s12`
+Run `pixi run s12` to verify your implementation.
 
 **Reference**: `solutions/solution_12.py`
 
----
-
-**Next**: In [Step 13](./step_13.md), you'll add the language modeling head that projects hidden states back to vocabulary logits for text generation.
+**Next**: In [Step 13](./step_13.md), you'll add the language modeling head that projects hidden states to vocabulary logits for text generation.

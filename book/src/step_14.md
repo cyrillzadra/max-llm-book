@@ -4,84 +4,48 @@
     Learn to implement autoregressive text generation with sampling and temperature control.
 </div>
 
-## What is autoregressive generation?
+## Implementing text generation
 
-In this section you will implement text generation. The model generates text one token at a time, using each prediction as input for the next.
+You've built the embeddings, attention mechanisms, transformer blocks, and language model head. Now you'll implement the generation loop that actually produces text.
 
-The process:
-1. Start with prompt: `[15496, 995]` ("Hello world")
-2. Predict next token: `[15496, 995, 318]` ("Hello world is")
-3. Predict next token: `[15496, 995, 318, 257]` ("Hello world is a")
-4. Repeat until reaching desired length
+The model generates text one token at a time, using each prediction as input for the next. Start with prompt `[15496, 995]` ("Hello world"), predict next token `[15496, 995, 318]` ("Hello world is"), predict next token `[15496, 995, 318, 257]` ("Hello world is a"), and repeat until reaching the desired length.
 
-You'll implement temperature control (adjusting randomness) and sampling (choosing from the probability distribution) to control generation quality and creativity.
+You'll implement temperature control (adjusting randomness) and sampling (choosing from the probability distribution) to control generation quality and creativity. Temperature scales logits before softmax. Lower values make high-probability tokens more likely (focused), while higher values flatten the distribution (diverse).
 
-## Why temperature and sampling?
+## Understanding generation techniques
 
-**Temperature** controls randomness in generation. The model outputs logits (raw scores) for each vocabulary token. These logits can vary in magnitude—some tokens might have much higher scores than others. Temperature scaling divides logits by a temperature value before applying softmax:
+The generation loop repeats: predict next token, append to sequence, repeat until reaching `max_new_tokens`. Each iteration requires a full forward pass through the model. The input sequence grows from `[batch, seq_length]` to `[batch, seq_length + 1]` and so on.
 
-$$P(x_i) = \frac{e^{z_i/T}}{\sum_j e^{z_j/T}}$$
+The model outputs `[batch, seq_length, vocab_size]` logits. To get the next token prediction, extract the last position: `logits[0, -1, :]` giving shape `[vocab_size]`. These are raw logits (unnormalized scores), not probabilities.
 
-where $z_i$ are the logits, $T$ is the temperature, and $P(x_i)$ is the probability of token $i$.
+Temperature scaling controls generation randomness using the formula `scaled_logits = logits / temperature`. Lower values (like 0.7) sharpen the distribution making high-probability tokens more likely. Higher values (like 1.2) flatten the distribution making generation more diverse. Temperature 1.0 uses the original distribution.
 
-- **Temperature = 1.0**: No scaling, use original distribution
-- **Temperature < 1.0** (e.g., 0.7): Sharpens distribution, makes high-probability tokens more likely (more focused, less random)
-- **Temperature > 1.0** (e.g., 1.2): Flattens distribution, makes low-probability tokens more likely (more diverse, more random)
-- **Temperature → 0**: Approaches greedy decoding (always pick highest probability)
-- **Temperature → ∞**: Approaches uniform distribution (random token selection)
+You can generate tokens two ways: greedy decoding selects the highest-probability token using [`F.argmax(logits)`](https://docs.modular.com/max/api/python/experimental/functional#max.experimental.functional.argmax). This is fast and deterministic but often produces repetitive text. Sampling randomly selects tokens according to their probability distribution, producing more diverse and creative text. Most practical generation uses sampling with temperature control.
 
-**Sampling vs. Greedy**: Greedy decoding always selects the highest-probability token (`argmax`). This produces deterministic, repetitive text. Sampling randomly selects tokens according to the probability distribution, producing diverse, creative text. Most practical generation uses sampling with temperature to balance coherence and creativity.
+For sampling, convert logits to probabilities with `F.softmax(logits)`, transfer to CPU, convert to NumPy with `np.from_dlpack(probs)`, then sample with `np.random.choice(len(probs), p=probs)`. NumPy is used because MAX doesn't have built-in sampling yet.
 
-## Why these design choices?
+After generating a token, append it to the sequence using [`F.concat([seq, new_token], axis=1)`](https://docs.modular.com/max/api/python/experimental/functional#max.experimental.functional.concat). The new token must be reshaped to 2D `[1, 1]` before concatenation.
 
-**1. Autoregressive for Tractability**: Generating all tokens simultaneously would require modeling the joint distribution `P(token_1, token_2, ..., token_n)`, which is exponentially complex. The autoregressive factorization `P(token_i | token_1, ..., token_{i-1})` breaks this into n simple conditional distributions that the model can learn. This makes training feasible while maintaining expressiveness.
+<div class="note">
+<div class="title">MAX operations</div>
 
-**2. Temperature for Control**: Without temperature control, you're stuck with the model's trained distribution—which might be too peaky (repetitive) or too flat (incoherent). Temperature gives users a simple knob to adjust creativity. News articles might use temperature=0.7 for factual consistency, while creative writing uses temperature=1.2 for diversity. One model serves many use cases.
+You'll use the following MAX operations to complete this task:
 
-**3. Sampling for Diversity**: Humans don't write by always choosing the most likely next word—that would produce boring, formulaic text. Sampling introduces controlled randomness that mirrors human creativity. The same prompt can generate many different completions, each valid and coherent. This diversity is essential for applications like story generation, brainstorming, or creative writing.
+**Probability operations**:
+- [`F.softmax(logits)`](https://docs.modular.com/max/api/python/experimental/functional#max.experimental.functional.softmax): Converts logits to probabilities
+- [`F.argmax(logits)`](https://docs.modular.com/max/api/python/experimental/functional#max.experimental.functional.argmax): Selects highest-probability token (greedy)
 
-**4. One Token at a Time**: While parallel generation techniques exist, autoregressive generation is simple, reliable, and provides fine-grained control. You can stop generation at any point, apply constraints per-token (e.g., banning certain words), or adjust temperature mid-generation. The sequential nature also matches human intuition about how language unfolds.
+**Sequence building**:
+- [`F.concat([seq, new_token], axis=1)`](https://docs.modular.com/max/api/python/experimental/functional#max.experimental.functional.concat): Appends token to sequence
+- [`Tensor.constant(value, dtype, device)`](https://docs.modular.com/max/api/python/experimental/tensor#max.experimental.tensor.Tensor.constant): Creates scalar tensors
 
-### Key concepts
+**NumPy interop**:
+- `probs.to(CPU())`: Transfers tensor to CPU
+- `np.from_dlpack(probs)`: Converts MAX tensor to NumPy for sampling
 
-**Autoregressive Loop**:
-- Repeat: predict next token, append to sequence
-- Input grows: `[batch, seq_length]` → `[batch, seq_length + 1]` → ...
-- Stops after `max_new_tokens` or when end-of-sequence token generated
-- Each iteration requires a full forward pass through the model
+</div>
 
-**Logit Extraction**:
-- Model outputs: `[batch, seq_length, vocab_size]`
-- For next token, use last position: `logits[0, -1, :]`
-- Shape: `[vocab_size]` (one score per vocabulary token)
-- These are raw logits, not probabilities yet
-
-**Temperature Scaling**:
-- Formula: `scaled_logits = logits / temperature`
-- Implemented as: `logits / Tensor.constant(temperature, ...)`
-- Must match dtype and device of logits
-- Applied before softmax
-
-**Sampling with NumPy**:
-- Convert to probabilities: `F.softmax(logits)`
-- Transfer to CPU: `probs.to(CPU())`
-- Convert to NumPy: `np.from_dlpack(probs)`
-- Sample: `np.random.choice(len(probs), p=probs)`
-- NumPy used because MAX doesn't have built-in sampling yet
-
-**Greedy Decoding**:
-- Select highest probability token: [`F.argmax(logits)`](https://docs.modular.com/max/api/python/experimental/functional#max.experimental.functional.argmax)
-- Deterministic: same input always produces same output
-- Faster than sampling (no softmax or random choice needed)
-- Often produces repetitive text
-
-**Concatenation**:
-- Append token to sequence: [`F.concat([seq, new_token], axis=1)`](https://docs.modular.com/max/api/python/experimental/functional#max.experimental.functional.concat)
-- New token must be 2D: `reshape([1, -1])` or `reshape([1, 1])`
-- Axis=1 concatenates along sequence dimension
-- Result has one more token than input
-
-### Implementation tasks (`step_14.py`)
+## Implementation tasks
 
 1. **Import Required Modules** (Lines 13-17):
    - Import `numpy as np`
@@ -112,7 +76,7 @@ where $z_i$ are the logits, $T$ is the temperature, and $P(x_i)$ is the probabil
    - Reshape: `next_token.reshape([1, -1])`
    - Concatenate: `F.concat([generated_tokens, next_token_2d], axis=1)`
 
-**Implementation**:
+**Implementation** (`step_14.py`):
 
 ```python
 {{#include ../../steps/step_14.py}}
@@ -120,19 +84,23 @@ where $z_i$ are the logits, $T$ is the temperature, and $P(x_i)$ is the probabil
 
 ### Validation
 
-Run `pixi run s14`
+Run `pixi run s14` to verify your implementation.
 
 **Reference**: `solutions/solution_14.py`
 
----
+## What you've built
 
-**Congratulations!** You've completed all 14 steps and built a complete GPT-2 model from scratch using Modular's MAX! You now understand:
+You've completed all 14 steps and built a complete GPT-2 model from scratch using MAX. You now have a working implementation of:
 
-- Token and position embeddings (Steps 05-06)
-- Query/Key/Value projections and attention (Steps 07-08)
-- Multi-head attention (Step 09)
-- Layer normalization and residual connections (Step 10)
-- Transformer blocks and model stacking (Steps 11-12)
-- Language modeling and text generation (Steps 13-14)
+**Core components**:
+- Model configuration and architecture definition
+- Causal masking for autoregressive generation
+- Layer normalization for training stability
+- Feed-forward networks with GELU activation
+- Token and position embeddings
+- Multi-head self-attention
+- Residual connections and transformer blocks
+- Language model head for next-token prediction
+- Text generation with temperature and sampling
 
-Your model can now generate text!
+Your model loads OpenAI's pretrained GPT-2 weights and generates text. You understand how every component works, from the low-level tensor operations to the high-level architecture decisions. This knowledge transfers directly to other transformer models like BERT, GPT-3, and beyond.
