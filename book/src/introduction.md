@@ -36,7 +36,7 @@ When you build GPT-2 in this guide, you'll load pretrained weights from
 Hugging Face, implement the architecture, and run text generation, all in the same
 environment.
 
-## Why puzzles?
+## Why coding challenges?
 
 This tutorial emphasizes **active problem-solving over passive reading**. Each
 step presents a focused implementation task with:

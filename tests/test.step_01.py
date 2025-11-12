@@ -1,4 +1,4 @@
-"""Tests for GPT2Config in puzzles/config.py"""
+"""Tests for GPT2Config in steps/step_01.py"""
 
 import sys
 from pathlib import Path
