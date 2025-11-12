@@ -1,14 +1,14 @@
-"""Tests for Step 10: Residual Connections and Layer Normalization"""
+"""Tests for Step 08: Residual Connections and Layer Normalization"""
 
 import ast
 from pathlib import Path
 
 
-def test_step_10():
-    """Comprehensive validation for Step 10 implementation."""
+def test_step_08():
+    """Comprehensive validation for Step 08 implementation."""
 
     results = []
-    step_file = Path("steps/step_10.py")
+    step_file = Path("steps/step_08.py")
 
     # Read source
     if not step_file.exists():
@@ -71,17 +71,17 @@ def test_step_10():
 
     # Phase 2: Structure checks
     try:
-        from steps.step_10 import LayerNorm, ResidualBlock, apply_residual_connection
+        from steps.step_08 import LayerNorm, ResidualBlock, apply_residual_connection
 
         results.append("✅ LayerNorm class exists")
         results.append("✅ ResidualBlock class exists")
         results.append("✅ apply_residual_connection function exists")
     except ImportError as e:
         if "LayerNorm" in str(e):
-            results.append("❌ LayerNorm class not found in step_10 module")
+            results.append("❌ LayerNorm class not found in step_08 module")
             results.append("   Hint: Create class LayerNorm(Module)")
         if "ResidualBlock" in str(e):
-            results.append("❌ ResidualBlock class not found in step_10 module")
+            results.append("❌ ResidualBlock class not found in step_08 module")
             results.append("   Hint: Create class ResidualBlock(Module)")
         if "apply_residual_connection" in str(e):
             results.append("❌ apply_residual_connection function not found")
@@ -287,7 +287,7 @@ def test_step_10():
 
     # Print all results
     print(
-        "Running tests for Step 10: Residual Connections and Layer Normalization...\n"
+        "Running tests for Step 08: Residual Connections and Layer Normalization...\n"
     )
     print("Results:")
     print("\n".join(results))

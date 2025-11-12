@@ -1,14 +1,14 @@
-"""Tests for Step 14: Text Generation"""
+"""Tests for Step 12: Text Generation"""
 
 import ast
 from pathlib import Path
 
 
-def test_step_14():
-    """Comprehensive validation for Step 14 implementation."""
+def test_step_12():
+    """Comprehensive validation for Step 12 implementation."""
 
     results = []
-    step_file = Path("steps/step_14.py")
+    step_file = Path("steps/step_12.py")
 
     # Read source
     if not step_file.exists():
@@ -56,7 +56,7 @@ def test_step_14():
 
     # Phase 2: Structure checks
     try:
-        from steps.step_14 import generate_next_token, generate_tokens
+        from steps.step_12 import generate_next_token, generate_tokens
 
         results.append("✅ generate_next_token function exists")
         results.append("✅ generate_tokens function exists")
@@ -196,7 +196,7 @@ def test_step_14():
             results.append(f"   {error_lines[-1]}")
 
     # Print all results
-    print("Running tests for Step 14: Text Generation...\n")
+    print("Running tests for Step 12: Text Generation...\n")
     print("Results:")
     print("\n".join(results))
 
@@ -215,4 +215,4 @@ def test_step_14():
 
 
 if __name__ == "__main__":
-    test_step_14()
+    test_step_12()

@@ -1,14 +1,14 @@
-"""Tests for Step 09: Multi-head Attention"""
+"""Tests for Step 07: Multi-head Attention"""
 
 import ast
 from pathlib import Path
 
 
-def test_step_09():
-    """Comprehensive validation for Step 09 implementation."""
+def test_step_07():
+    """Comprehensive validation for Step 07 implementation."""
 
     results = []
-    step_file = Path("steps/step_09.py")
+    step_file = Path("steps/step_07.py")
 
     # Read source
     if not step_file.exists():
@@ -69,19 +69,19 @@ def test_step_09():
 
     # Phase 2: Structure checks
     try:
-        from steps.step_09 import GPT2MultiHeadAttention, causal_mask
+        from steps.step_07 import GPT2MultiHeadAttention, causal_mask
 
         results.append("✅ GPT2MultiHeadAttention class exists")
         results.append("✅ causal_mask function exists")
     except ImportError as e:
         if "GPT2MultiHeadAttention" in str(e):
             results.append(
-                "❌ GPT2MultiHeadAttention class not found in step_09 module"
+                "❌ GPT2MultiHeadAttention class not found in step_07 module"
             )
             results.append("   Hint: Create class GPT2MultiHeadAttention(Module)")
         if "causal_mask" in str(e):
             results.append("❌ causal_mask function not found")
-            results.append("   Hint: Copy causal_mask from solution_08.py")
+            results.append("   Hint: Copy causal_mask from solution_02.py")
         print("\n".join(results))
         return
 
@@ -301,7 +301,7 @@ def test_step_09():
             results.append(f"   {error_lines[-1]}")
 
     # Print all results
-    print("Running tests for Step 09: Multi-head Attention...\n")
+    print("Running tests for Step 07: Multi-head Attention...\n")
     print("Results:")
     print("\n".join(results))
 
@@ -318,4 +318,4 @@ def test_step_09():
 
 
 if __name__ == "__main__":
-    test_step_09()
+    test_step_07()

@@ -1,14 +1,14 @@
-"""Tests for Step 13: Language Model Head"""
+"""Tests for Step 11: Language Model Head"""
 
 import ast
 from pathlib import Path
 
 
-def test_step_13():
-    """Comprehensive validation for Step 13 implementation."""
+def test_step_11():
+    """Comprehensive validation for Step 11 implementation."""
 
     results = []
-    step_file = Path("steps/step_13.py")
+    step_file = Path("steps/step_11.py")
 
     # Read source
     if not step_file.exists():
@@ -49,7 +49,7 @@ def test_step_13():
 
     # Phase 2: Structure checks
     try:
-        from steps.step_13 import MaxGPT2LMHeadModel
+        from steps.step_11 import MaxGPT2LMHeadModel
 
         results.append("✅ MaxGPT2LMHeadModel class exists")
     except ImportError:
@@ -166,7 +166,7 @@ def test_step_13():
         results.append(f"❌ Functional test failed: {e}")
 
     # Print all results
-    print("Running tests for Step 13: Language Model Head...\n")
+    print("Running tests for Step 11: Language Model Head...\n")
     print("Results:")
     print("\n".join(results))
 
@@ -183,4 +183,4 @@ def test_step_13():
 
 
 if __name__ == "__main__":
-    test_step_13()
+    test_step_11()

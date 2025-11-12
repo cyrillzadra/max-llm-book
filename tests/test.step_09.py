@@ -1,14 +1,14 @@
-"""Tests for Step 11: Transformer Block"""
+"""Tests for Step 09: Transformer Block"""
 
 import ast
 from pathlib import Path
 
 
-def test_step_11():
-    """Comprehensive validation for Step 11 implementation."""
+def test_step_09():
+    """Comprehensive validation for Step 09 implementation."""
 
     results = []
-    step_file = Path("steps/step_11.py")
+    step_file = Path("steps/step_09.py")
 
     # Read source
     if not step_file.exists():
@@ -84,11 +84,11 @@ def test_step_11():
 
     # Phase 2: Structure checks
     try:
-        from steps.step_11 import GPT2Block
+        from steps.step_09 import GPT2Block
 
         results.append("✅ GPT2Block class exists")
     except ImportError:
-        results.append("❌ GPT2Block class not found in step_11 module")
+        results.append("❌ GPT2Block class not found in step_09 module")
         results.append("   Hint: Create class GPT2Block(Module)")
         print("\n".join(results))
         return
@@ -263,7 +263,7 @@ def test_step_11():
             results.append(f"   {error_lines[-1]}")
 
     # Print all results
-    print("Running tests for Step 11: Transformer Block...\n")
+    print("Running tests for Step 09: Transformer Block...\n")
     print("Results:")
     print("\n".join(results))
 
@@ -280,4 +280,4 @@ def test_step_11():
 
 
 if __name__ == "__main__":
-    test_step_11()
+    test_step_09()
