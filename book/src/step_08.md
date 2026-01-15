@@ -1,56 +1,58 @@
-# Step 08: Residual connections and layer normalization
+# Language model head
 
 <div class="note">
 
-Learn to implement residual connections and layer normalization to enable
-training deep transformer networks.
+Learn to add the final linear projection layer that converts hidden states to
+vocabulary logits for next-token prediction.
 
 </div>
 
-## Building the residual pattern
+In this step, you'll create the `MaxGPT2LMHeadModel`, which combines the
+model body (`MaxGPT2Model`) with a head `Linear` layer, thus completing the
+GPT-2 model that can predict next tokens. This class wraps the transformer from step
+7 and adds a final linear layer that projects 768-dimensional hidden states to
+50,257-dimensional vocabulary logits.
 
-In this step, you'll combine residual connections and layer normalization into a
-reusable pattern for transformer blocks. Residual connections add the input
-directly to the output using `output = input + layer(input)`, creating shortcuts
-that let gradients flow through deep networks. You'll implement this alongside
-the layer normalization from Step 03.
+The language model head is a single linear layer without bias. For each position
+in the sequence, it outputs a score for every possible next token. Higher scores
+indicate the model thinks that token is more likely to come next.
 
-GPT-2 uses pre-norm architecture where layer norm is applied before each
-sublayer (attention or MLP). The pattern is `x = x + sublayer(layer_norm(x))`:
-normalize first, process, then add the original input back. This is more stable
-than post-norm alternatives for deep networks.
+At 768 × 50,257 = 38.6M parameters, the LM head is the single largest component
+in GPT-2, representing about 33% of the model's 117M total parameters. This is
+larger than all 12 transformer blocks combined.
 
-Residual connections solve the vanishing gradient problem. During
-backpropagation, gradients flow through the identity path (`x = x + ...`)
-without being multiplied by layer weights. This allows training networks with
-12+ layers. Without residuals, gradients would diminish exponentially as they
-propagate through many layers.
+## Understanding the projection
 
-Layer normalization works identically during training and inference because it
-normalizes each example independently. No batch statistics, no running averages,
-just consistent normalization that keeps activation distributions stable
-throughout training.
+The language model head performs a simple linear projection using MAX's
+[`Linear`](https://docs.modular.com/max/api/python/nn/module_v3#max.nn.module_v3.Linear)
+layer. It maps each 768-dimensional hidden state to 50,257 scores, one per
+vocabulary token.
 
-## Understanding the pattern
+The layer uses `bias=False`, meaning it only has weights and no bias vector.
+This saves 50,257 parameters (about 0.4% of model size). The bias provides
+little benefit because the layer normalization before the LM head already
+centers the activations. Adding a constant bias to all logits wouldn't change
+the relative probabilities after softmax.
 
-The pre-norm residual pattern combines three operations in sequence:
+The output is called "logits," which are raw scores before applying softmax.
+Logits can be any real number. During text generation (Step 10), you'll convert
+logits to probabilities with softmax. Working with logits directly enables
+techniques like temperature scaling and top-k sampling.
 
-**Layer normalization**: Normalize the input with
-`F.layer_norm(x, gamma=self.weight, beta=self.bias, epsilon=self.eps)`. This
-uses learnable weight (gamma) and bias (beta) parameters to scale and shift the
-normalized values. You already implemented this in Step 03.
+## Understanding the complete model
 
-**Sublayer processing**: Pass the normalized input through a sublayer (attention
-or MLP). The sublayer transforms the data while the layer norm keeps its input
-well-conditioned.
+With the LM head added, you now have the complete GPT-2 architecture:
 
-**Residual addition**: Add the original input back to the sublayer output using
-simple element-wise addition: `x + sublayer_output`. Both tensors must have
-identical shapes `[batch, seq_length, embed_dim]`.
+1. **Input**: Token IDs `[batch, seq_length]`
+2. **Embeddings**: Token + position `[batch, seq_length, 768]`
+3. **Transformer blocks**: 12 blocks process the embeddings `[batch, seq_length, 768]`
+4. **Final layer norm**: Normalizes the output `[batch, seq_length, 768]`
+5. **LM head**: Projects to vocabulary `[batch, seq_length, 50257]`
+6. **Output**: Logits `[batch, seq_length, 50257]`
 
-The complete pattern is `x = x + sublayer(layer_norm(x))`. This differs from
-post-norm `x = layer_norm(x + sublayer(x))`, as pre-norm is more stable because
-normalization happens before potentially unstable sublayer operations.
+Each position gets independent logits over the vocabulary. To predict the next
+token after position i, you look at the logits at position i. The highest
+scoring token is the model's top prediction.
 
 <div class="note">
 
@@ -58,52 +60,36 @@ normalization happens before potentially unstable sublayer operations.
 
 You'll use the following MAX operations to complete this task:
 
-**Layer normalization**:
-- [`F.layer_norm(x, gamma, beta, epsilon)`](https://docs.modular.com/max/api/python/experimental/functional#max.experimental.functional.layer_norm): Normalizes across feature dimension
+**Linear layer**:
 
-**Tensor initialization**:
-- [`Tensor.ones([dim])`](https://docs.modular.com/max/api/python/experimental/tensor#max.experimental.tensor.Tensor.ones): Creates weight parameter
-- [`Tensor.zeros([dim])`](https://docs.modular.com/max/api/python/experimental/tensor#max.experimental.tensor.Tensor.zeros): Creates bias parameter
+- [`Linear(in_features, out_features, bias=False)`](https://docs.modular.com/max/api/python/nn/module_v3#max.nn.module_v3.Linear): Projects hidden states to vocabulary logits
 
 </div>
 
-## Implementing the pattern
+## Implementing the language model
 
-You'll implement three classes that demonstrate the residual pattern:
-`LayerNorm` for normalization, `ResidualBlock` that combines norm and residual
-addition, and a standalone `apply_residual_connection` function.
+You'll create the `MaxGPT2LMHeadModel` class that wraps the transformer with a
+language modeling head. The implementation is straightforward, with just two
+components and a simple forward pass.
 
-First, import the required modules. You'll need `functional as F` for layer
-norm, `Tensor` for parameters, `DimLike` for type hints, and `Module` as the
-base class.
+First, import the required modules. You'll need `Linear` and `Module` from MAX,
+plus the previously implemented `GPT2Config` and `MaxGPT2Model`.
 
-**LayerNorm implementation**:
+In the `__init__` method, create two components:
 
-In `__init__`, create the learnable parameters:
-- Weight: `Tensor.ones([dim])` stored as `self.weight`
-- Bias: `Tensor.zeros([dim])` stored as `self.bias`
-- Store `eps` for numerical stability
+- Transformer: `MaxGPT2Model(config)` stored as `self.transformer`
+- LM head: `Linear(config.n_embd, config.vocab_size, bias=False)` stored as `self.lm_head`
 
-In `forward`, apply normalization with
-`F.layer_norm(x, gamma=self.weight, beta=self.bias, epsilon=self.eps)`. Returns
-a normalized tensor with the same shape as input.
+Note the `bias=False` parameter, which creates a linear layer without bias
+terms.
 
-**ResidualBlock implementation**:
+In the `forward` method, implement a simple two-step process:
 
-In `__init__`, create a `LayerNorm` instance:
-`self.ln = LayerNorm(dim, eps=eps)`. This will normalize inputs before
-sublayers.
+1. Get hidden states from the transformer: `hidden_states = self.transformer(input_ids)`
+2. Project to vocabulary logits: `logits = self.lm_head(hidden_states)`
+3. Return `logits`
 
-In `forward`, implement the pre-norm pattern:
-1. Normalize: `normalized = self.ln(x)`
-2. Process: `sublayer_output = sublayer(normalized)`
-3. Add residual: `return x + sublayer_output`
-
-**Standalone function**:
-
-Implement `apply_residual_connection(input_tensor, sublayer_output)` that
-returns `input_tensor + sublayer_output`. This demonstrates the residual pattern
-as a simple function.
+That's it. The model takes token IDs and returns logits. In the next step, you'll use these logits to generate text.
 
 **Implementation** (`step_08.py`):
 
@@ -124,5 +110,4 @@ Run `pixi run s08` to verify your implementation.
 
 </details>
 
-**Next**: In [Step 09](./step_09.md), you'll combine multi-head attention, MLP,
-layer norm, and residual connections into a complete transformer block.
+**Next**: In [Step 09](./step_09.md), you'll implement tokenization functions to convert between text and token IDs. 

@@ -1,94 +1,86 @@
-# Step 09: Transformer block
+# Encode and decode tokens
 
 <div class="note">
 
-Learn to combine attention, MLP, layer normalization, and residual connections
-into a complete transformer block.
+Learn to convert between text and token IDs using tokenizers and MAX tensors.
 
 </div>
 
-## Building the transformer block
+In this step, you'll implement utility functions to bridge the gap between text and the token IDs your model operates on. The `encode_text()` function converts an input string into a tensor of token IDs, while `decode_tokens()` converts token IDs into a string.
 
-In this step, you'll build the `GPT2Block` class. This is a fundamental
-repeating unit of GPT-2. Each block combines multi-head attention and a
-feed-forward network, with layer normalization and residual connections around
-each.
+As you saw when building the model body in step 7 (`MaxGPT2Model`), the model must receive input as token IDs (not raw text). The token IDs are integers that represent pieces of text according to a tokenizer vocabulary. GPT-2 uses a Byte Pair Encoding (BPE) tokenizer, which breaks text into subword units. For example, "Hello world" becomes `[15496, 995]` - two tokens representing the words.
 
-The block processes input through two sequential operations. First, it applies
-layer norm, runs multi-head attention, then adds the result back to the input
-(residual connection). Second, it applies another layer norm, runs the MLP, and
-adds that result back. This pattern is `x = x + sublayer(layer_norm(x))`, called
-pre-normalization.
+You'll use the Hugging Face tokenizer to handle the text-to-token conversion, then wrap it with functions that work with MAX tensors. This separation keeps tokenization (a preprocessing step) separate from model inference (tensor operations).
 
-GPT-2 uses pre-norm because it stabilizes training in deep networks. By
-normalizing before each sublayer instead of after, gradients flow more smoothly
-through the network's 12 stacked blocks.
+## Understanding tokenization
 
-## Understanding the components
+Tokenization converts text to a list of integers. The GPT-2 tokenizer uses a vocabulary of 50,257 tokens, where common words get single tokens and rare words split into subwords.
 
-The transformer block consists of four components, applied in this order:
+The HuggingFace tokenizer provides an `encode` method that takes text and returns a Python list of token IDs. For example:
 
-**First layer norm (`ln_1`)**: Normalizes the input before attention. Uses epsilon=1e-5 for numerical stability.
+```python
+token_ids = tokenizer.encode("Hello world")  # Returns [15496, 995]
+```
 
-**Multi-head attention (`attn`)**: The self-attention mechanism from Step 07. Lets each position attend to all previous positions.
+You can specify `max_length` and `truncation=True` to limit sequence length. If the text exceeds `max_length`, the tokenizer cuts it off. This prevents memory issues with very long inputs.
 
-**Second layer norm (`ln_2`)**: Normalizes before the MLP. Same configuration as the first.
+After encoding, you need to convert the Python list to a MAX tensor. Use `Tensor.constant` to create a tensor with the token IDs, specifying `dtype=DType.int64` (GPT-2 expects 64-bit integers) and the target device.
 
-**Feed-forward network (`mlp`)**: The position-wise MLP from Step 04. Expands to 3,072 dimensions internally (4× the embedding size), then projects back to 768.
+The tensor needs shape `[batch, seq_length]` for model input. Wrap the token list in another list to add the batch dimension: `[token_ids]` becomes `[[15496, 995]]` with shape `[1, 2]`.
 
-The block maintains a constant 768-dimensional representation throughout. Input
-shape `[batch, seq_length, 768]` stays the same after each sublayer, which is
-essential for stacking 12 blocks together.
+## Understanding decoding
 
-## Understanding the flow
+Decoding reverses tokenization: convert token IDs back to text. This requires moving tensors from GPU to CPU, converting to NumPy, then using the tokenizer's `decode` method.
 
-Each sublayer follows the pre-norm pattern:
+First, transfer the tensor to CPU with `.to(CPU())`. MAX tensors can live on GPU or CPU, but Python libraries like NumPy only work with CPU data.
 
-1. Save the input as `residual`
-2. Apply layer normalization to the input
-3. Process through the sublayer (attention or MLP)
-4. Add the original `residual` back to the output
+Next, convert to NumPy using `np.from_dlpack`. DLPack is a standard that enables zero-copy tensor sharing between frameworks. The MAX tensor and NumPy array share the same underlying memory.
 
-This happens twice per block, once for attention and once for the MLP. The
-residual connections let gradients flow directly through the network, preventing
-vanishing gradients in deep models.
+If the tensor is 2D (batch dimension present), flatten it to 1D with `.flatten()`. The tokenizer expects a flat list of token IDs, not a batched format.
 
-Component names (`ln_1`, `attn`, `ln_2`, `mlp`) match Hugging Face's GPT-2
-implementation. This matters for loading pretrained weights in later steps.
+Finally, convert to a Python list with `.tolist()` and decode with `tokenizer.decode(token_ids, skip_special_tokens=True)`. The `skip_special_tokens=True` parameter removes padding and end-of-sequence markers from the output.
 
-## Implementing the block
+<div class="note">
 
-You'll create the `GPT2Block` class by composing the components from earlier
-steps. The block takes `GPT2Config` and creates four sublayers, then applies
-them in sequence with residual connections.
+<div class="title">MAX operations</div>
 
-First, import the required modules. You'll need `Module` from MAX, plus the
-previously implemented components: `GPT2Config`, `GPT2MLP`,
-`GPT2MultiHeadAttention`, and `LayerNorm`.
+You'll use the following MAX operations to complete this task:
 
-In the `__init__` method, create the four sublayers:
-- `ln_1`: `LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)`
-- `attn`: `GPT2MultiHeadAttention(config)`
-- `ln_2`: `LayerNorm(config.n_embd, eps=config.layer_norm_epsilon)`
-- `mlp`: `GPT2MLP(4 * config.n_embd, config)`
+**Tensor creation**:
 
-The MLP uses `4 * config.n_embd` (3,072 dimensions) as its inner dimension, following the standard transformer ratio.
+- [`Tensor.constant(data, dtype, device)`](https://docs.modular.com/max/api/python/experimental/tensor#max.experimental.tensor.Tensor.constant): Creates tensor from Python data
 
-In the `forward` method, implement the two sublayer blocks:
+**Device transfer**:
 
-**Attention block**:
-1. Save `residual = hidden_states`
-2. Normalize: `hidden_states = self.ln_1(hidden_states)`
-3. Apply attention: `attn_output = self.attn(hidden_states)`
-4. Add back: `hidden_states = attn_output + residual`
+- [`tensor.to(CPU())`](https://docs.modular.com/max/api/python/experimental/tensor#max.experimental.tensor.Tensor.to): Moves tensor to CPU for NumPy conversion
 
-**MLP block**:
-1. Save `residual = hidden_states`
-2. Normalize: `hidden_states = self.ln_2(hidden_states)`
-3. Apply MLP: `feed_forward_hidden_states = self.mlp(hidden_states)`
-4. Add back: `hidden_states = residual + feed_forward_hidden_states`
+**NumPy interop**:
 
-Finally, return `hidden_states`.
+- `np.from_dlpack(tensor)`: Converts MAX tensor to NumPy using DLPack protocol
+
+</div>
+
+## Implementing tokenization
+
+You'll create two functions: `encode_text` to convert strings to tensors, and `decode_tokens` to convert tensors back to strings.
+
+First, import the required modules. You'll need `numpy as np` for array operations, `CPU` from MAX's driver for device specification, `DType` for specifying integer types, and `Tensor` for creating and manipulating tensors.
+
+In `encode_text`, implement the encoding and conversion:
+
+1. Encode the text to token IDs using the tokenizer: `token_ids = tokenizer.encode(text, max_length=max_length, truncation=True)`
+2. Convert to a MAX tensor with batch dimension: `Tensor.constant([token_ids], dtype=DType.int64, device=device)`
+
+Note the `[token_ids]` wrapping to create the batch dimension. This gives shape `[1, seq_length]` instead of just `[seq_length]`.
+
+In `decode_tokens`, implement the reverse process:
+
+1. Transfer to CPU and convert to NumPy: `token_ids = np.from_dlpack(token_ids.to(CPU()))`
+2. Flatten if needed: `if token_ids.ndim > 1: token_ids = token_ids.flatten()`
+3. Convert to Python list: `token_ids = token_ids.tolist()`
+4. Decode to text: `return tokenizer.decode(token_ids, skip_special_tokens=True)`
+
+The flattening step handles both 1D and 2D tensors, making the function work with single sequences or batches.
 
 **Implementation** (`step_09.py`):
 
@@ -98,7 +90,7 @@ Finally, return `hidden_states`.
 
 ### Validation
 
-Run `pixi run s09` to verify your implementation.
+Run `pixi run s09` to verify your implementation correctly converts text to tensors and back.
 
 <details>
 <summary>Show solution</summary>
@@ -109,4 +101,4 @@ Run `pixi run s09` to verify your implementation.
 
 </details>
 
-**Next**: In [Step 10](./step_10.md), you'll stack 12 transformer blocks together to create the complete GPT-2 model architecture.
+**Next**: In [Step 10](./step_10.md), you'll implement the text generation loop that uses these functions to produce coherent text autoregressively.

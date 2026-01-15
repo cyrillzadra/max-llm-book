@@ -1,93 +1,136 @@
-# Step 11: Language model head
+# Load weights and run model
 
 <div class="note">
 
-Learn to add the final linear projection layer that converts hidden states to
-vocabulary logits for next-token prediction.
+Learn to load pretrained weights from HuggingFace and prepare the model for text generation.
 
 </div>
 
-## Adding the language model head
+With all components implemented, you're ready to load OpenAI's pretrained GPT-2 weights and run the model. This step brings everything together: loading weights from HuggingFace, handling weight format differences, initializing the tokenizer, and compiling the model for efficient inference.
 
-In this step, you'll create the `MaxGPT2LMHeadModel` - the complete language
-model that can predict next tokens. This class wraps the transformer from Step
-10 and adds a final linear layer that projects 768-dimensional hidden states to
-50,257-dimensional vocabulary logits.
+The HuggingFace `transformers` library provides OpenAI's pretrained GPT-2 weights. You'll load these weights into your MAX implementation, making your model immediately capable of generating coherent text without training.
 
-The language model head is a single linear layer without bias. For each position
-in the sequence, it outputs a score for every possible next token. Higher scores
-indicate the model thinks that token is more likely to come next.
+However, there's a complication: HuggingFace's GPT-2 uses Conv1D layers for its linear transformations, while your MAX implementation uses standard Linear layers. These store weights in transposed formats, so you'll need to transpose specific weight matrices after loading.
 
-At 768 × 50,257 = 38.6M parameters, the LM head is the single largest component
-in GPT-2, representing about 33% of the model's 117M total parameters. This is
-larger than all 12 transformer blocks combined.
+## Understanding weight loading
 
-## Understanding the projection
+Weight loading involves three steps: loading the HuggingFace model, transferring weights to your MAX model, and transposing Conv1D weights.
 
-The language model head performs a simple linear projection using MAX's
-[`Linear`](https://docs.modular.com/max/api/python/nn/module_v3#max.nn.module_v3.Linear)
-layer. It maps each 768-dimensional hidden state to 50,257 scores, one per
-vocabulary token.
+First, load the pretrained model with `GPT2LMHeadModel.from_pretrained("gpt2")`. This downloads the weights (about 500MB) and returns a PyTorch model with the exact architecture you've implemented.
 
-The layer uses `bias=False`, meaning it only has weights and no bias vector.
-This saves 50,257 parameters (about 0.4% of model size). The bias provides
-little benefit because the layer normalization before the LM head already
-centers the activations. Adding a constant bias to all logits wouldn't change
-the relative probabilities after softmax.
+Next, transfer these weights to your MAX model using `max_model.load_state_dict(hf_model.state_dict())`. The `state_dict` is a dictionary mapping layer names to weight tensors. Since your MAX model has the exact same architecture and layer names, this transfer works seamlessly.
 
-The output is called "logits," which are raw scores before applying softmax.
-Logits can be any real number. During text generation (Step 12), you'll convert
-logits to probabilities with softmax. Working with logits directly enables
-techniques like temperature scaling and top-k sampling.
+Finally, transpose the weights for layers that use Conv1D in HuggingFace: `c_attn`, `c_proj`, and `c_fc`. Conv1D stores weights in shape `[in_features, out_features]`, while Linear expects `[out_features, in_features]`. Use the `.T` property to transpose: `child.weight = child.weight.T`.
 
-## Understanding the complete model
+## Understanding model compilation
 
-With the LM head added, you now have the complete GPT-2 architecture:
+Before you can run text generation, compile the model with `.compile(token_type)`. Compilation analyzes the model's computation graph and generates optimized code for your hardware.
 
-1. **Input**: Token IDs `[batch, seq_length]`
-2. **Embeddings**: Token + position `[batch, seq_length, 768]`
-3. **Transformer blocks**: 12 blocks process the embeddings `[batch, seq_length, 768]`
-4. **Final layer norm**: Normalizes the output `[batch, seq_length, 768]`
-5. **LM head**: Projects to vocabulary `[batch, seq_length, 50257]`
-6. **Output**: Logits `[batch, seq_length, 50257]`
+First, you need to specify the `token_type` input using `TensorType`. This tells the MAX compiler what shape and dtype to expect:
 
-Each position gets independent logits over the vocabulary. To predict the next
-token after position i, you look at the logits at position i. The highest
-scoring token is the model's top prediction.
+```python
+token_type = TensorType(
+    DType.int64,
+    ("batch", "seqlen"),
+    device=DeviceRef.from_device(device)
+)
+```
 
-<div class="note">
+The shape uses symbolic dimensions `("batch", "seqlen")` rather than concrete numbers like `[1, 20]`. This allows the compiled model to handle any batch size and sequence length, not just fixed dimensions.
 
-<div class="title">MAX operations</div>
+Compilation takes a few seconds but only happens once. After compilation, inference is much faster because MAX has optimized the entire computation graph.
 
-You'll use the following MAX operations to complete this task:
+## Understanding the tokenizer
 
-**Linear layer**:
-- [`Linear(in_features, out_features, bias=False)`](https://docs.modular.com/max/api/python/nn/module_v3#max.nn.module_v3.Linear): Projects hidden states to vocabulary logits
+Back in step 9, you implemented functions to encode and decode tokens, but both
+functions require a `tokenizer` argument. Now you’ll load that tokenizer from
+Hugging Face, using `GPT2Tokenizer.from_pretrained("gpt2")`,
+which downloads the same tokenization rules OpenAI used during training.
 
-</div>
+Set the padding token to match the end-of-sequence token: `tokenizer.pad_token = tokenizer.eos_token`. GPT-2 doesn't have a dedicated padding token, so we reuse the EOS token for this purpose.
 
-## Implementing the language model
+Then pass the `tokenizer` to the `generate_text()` function you created
+in step 10 (which passes it to `tokenize_text()` and `decode_tokens()`
+from step 9).
 
-You'll create the `MaxGPT2LMHeadModel` class that wraps the transformer with a
-language modeling head. The implementation is straightforward, with just two
-components and a simple forward pass.
+## Implementing the main function
 
-First, import the required modules. You'll need `Linear` and `Module` from MAX,
-plus the previously implemented `GPT2Config` and `GPT2Model`.
+You'll implement the `main()` function that orchestrates the entire pipeline: loading models, transferring weights, initializing the tokenizer, compiling the model, and running an interactive prompt loop.
 
-In the `__init__` method, create two components:
-- Transformer: `GPT2Model(config)` stored as `self.transformer`
-- LM head: `Linear(config.n_embd, config.vocab_size, bias=False)` stored as `self.lm_head`
+Start by loading the pretrained HuggingFace model:
 
-Note the `bias=False` parameter, which creates a linear layer without bias
-terms.
+```python
+hf_model = GPT2LMHeadModel.from_pretrained("gpt2")
+```
 
-In the `forward` method, implement a simple two-step process:
-1. Get hidden states from the transformer: `hidden_states = self.transformer(input_ids)`
-2. Project to vocabulary logits: `logits = self.lm_head(hidden_states)`
-3. Return `logits`
+Initialize your MAX model with the default device and configuration:
 
-That's it. The model takes token IDs and returns logits. In the next step, you'll use these logits to generate text.
+```python
+_, device = defaults()
+config = GPT2Config()
+max_model = MaxGPT2LMHeadModel(config)
+```
+
+The `defaults()` function returns `(dtype, device)` tuples. You only need the device, so use `_` to ignore the dtype.
+
+Load and transpose the weights:
+
+```python
+max_model.load_state_dict(hf_model.state_dict())
+max_model.to(device)
+for name, child in max_model.descendents:
+    if isinstance(child, Linear):
+        if any(layer_name in name for layer_name in ["c_attn", "c_proj", "c_fc"]):
+            child.weight = child.weight.T
+```
+
+The `descendents` property gives you all nested modules with their full paths. Check each child's name for the Conv1D layers and transpose their weights.
+
+Initialize the tokenizer:
+
+```python
+tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
+tokenizer.pad_token = tokenizer.eos_token
+```
+
+Compile the model:
+
+```python
+token_type = TensorType(
+    DType.int64, ("batch", "seqlen"), device=DeviceRef.from_device(device)
+)
+compiled_max_model = max_model.compile(token_type)
+```
+
+Finally, create an interactive prompt loop where users can input text and see generated results:
+
+```python
+try:
+    while True:
+        user_input = input("Enter your prompt: ").strip()
+
+        if user_input.lower() in ['quit', 'exit', 'q']:
+            break
+
+        if not user_input:
+            continue
+
+        generated_text = generate_text(
+            compiled_max_model,
+            tokenizer,
+            device,
+            user_input,
+            max_new_tokens=50,
+            temperature=0.8,
+            do_sample=True
+        )
+        print(f"\nGenerated text:\n{generated_text}\n")
+
+except KeyboardInterrupt:
+    print("\n\nExiting...")
+```
+
+The loop continues until the user types 'quit', 'exit', 'q', or presses Ctrl+C.
 
 **Implementation** (`step_11.py`):
 
@@ -108,5 +151,29 @@ Run `pixi run s11` to verify your implementation.
 
 </details>
 
-**Next**: In [Step 12](./step_12.md), you'll implement text generation using
-sampling and temperature control to generate coherent text autoregressively.
+**Congratulations!** You've completed built a complete GPT-2 implementation from scratch. 
+
+If code verification passed, you can execute your `step_11.py` code with `pixi run gpt2`. 
+
+## What's next?
+
+You now understand the architectural foundation that powers modern language
+models. LLaMA, Mistral, and more build on these same components with incremental
+refinements. You have everything you need to implement those refinements
+yourself.
+
+Consider extending your implementation with:
+
+- **Grouped-query attention (GQA)**: Reduce memory consumption by sharing key-value pairs across multiple query heads, as used in LLaMA 2.
+- **Rotary position embeddings (RoPE)**: Replace learned position embeddings with rotation-based encoding, improving length extrapolation in models like LLaMA and GPT-NeoX.
+- **SwiGLU activation**: Swap GELU for the gated linear unit variant used in LLaMA and PaLM.
+- **Mixture of experts (MoE)**: Add sparse expert routing to scale model capacity efficiently, as in Mixtral and GPT-4.
+
+Each refinement builds directly on what you've implemented. The attention
+mechanism you wrote becomes grouped-query attention with a simple modification
+to how you reshape key-value tensors. Your position embeddings can be replaced
+with RoPE by changing how you encode positional information. The feed-forward
+network you built becomes SwiGLU by adding a gating mechanism.
+
+Pick an architecture that interests you and start building. You'll find the
+patterns are familiar because the fundamentals haven't changed.

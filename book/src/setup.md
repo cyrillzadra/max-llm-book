@@ -1,8 +1,4 @@
-# How this book works
-
-Each step includes automated tests that verify your implementation before moving
-forward. This immediate feedback helps you catch issues early and build
-confidence.
+# Project Setup
 
 You'll first need to clone [the GitHub repository](https://github.com/modular/max-llm-book) and navigate to the repository:
 
@@ -17,23 +13,29 @@ Then download and install [pixi](https://pixi.sh/dev/):
 curl -fsSL https://pixi.sh/install.sh | sh
 ```
 
-To validate a step, use the corresponding test command. For example, to test
+## How to use the book
+
+To validate a step, use the corresponding check command. For example, to check
 Step 01:
 
 ```bash
 pixi run s01
 ```
 
-Initially, tests will fail because the implementation isn't complete:
+Each step includes automated checks that verify your implementation before moving
+forward. This immediate feedback helps you catch issues early and build
+confidence. Initially, checks will fail because the implementation isn't complete:
 
 ```sh
-✨ Pixi task (s01): python tests/test.step_01.py
-Running tests for Step 01: Create Model Configuration...
+✨ Pixi task (s01): python checks/check_step_01.py
+Running checks for Step 01: Model Configuration...
 
-Results:
-❌ dataclass is not imported from dataclasses
-❌ GPT2Config does not have the @dataclass decorator
-❌ vocab_size is incorrect: expected match with Hugging Face model configuration, got None
+✅ GPT2Config can be instantiated with default values
+
+❌ ERRORS:
+  - GPT2Config must be a dataclass (use @dataclass decorator)
+  - Field 'vocab_size' has incorrect value: expected 50257, got None
+  - Field 'n_positions' has incorrect value: expected 1024, got None
 # ...
 ```
 
@@ -43,17 +45,17 @@ When your implementation is
 correct, you'll see:
 
 ```output
-✨ Pixi task (s01): python tests/test.step_01.py
-Running tests for Step 01: Create Model Configuration...
+✨ Pixi task (s01): python checks/check_step_01.py
+Running checks for Step 01: Model Configuration...
 
-Results:
-✅ dataclass is correctly imported from dataclasses
-✅ GPT2Config has the @dataclass decorator
-✅ vocab_size is correct
+✅ GPT2Config is a dataclass
+✅ GPT2Config can be instantiated with default values
+✅ vocab_size = 50257
+✅ n_positions = 1024
 # ...
 ```
 
-The test output tells you exactly what needs to be fixed, making it easy to
+The check output tells you exactly what needs to be fixed, making it easy to
 iterate until your implementation is correct. Once all checks pass, you're ready
 to move on to the next step.
 
@@ -72,7 +74,7 @@ useful for:
   mechanisms, or any step in the tutorial
 - **Understanding the MAX API**: Get clarification on MAX Framework methods,
   parameters, and patterns
-- **Debugging test failures**: Paste test output to understand what's missing
+- **Debugging check failures**: Paste check output to understand what's missing
 - **Exploring alternatives**: Ask "why this approach?" to deepen your understanding
 
 If you're using Claude, see [claude.md](./claude.md) for custom instructions
