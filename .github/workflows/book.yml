@@ -26,7 +26,8 @@ permissions:
   contents: write
 
 jobs:
-  test:
+  # Note: only deploys on push to main
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,31 +50,6 @@ jobs:
         run: |
           pixi run fmt
 
-      # - name: Tests
-      #   shell: bash
-      #   run: |
-      #     pixi run test-all
-
-  deploy:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.modular
-            ~/.cache/modular
-          key: ${{ runner.os }}-modular-${{ hashFiles('**/pixi.toml') }}
-
-      - uses: prefix-dev/setup-pixi@v0.9.0
-        with:
-          pixi-version: v0.63.2
-          cache: false
-          post-cleanup: false
-
       - name: Build
         shell: bash
         run: |
@@ -82,6 +58,7 @@ jobs:
 
       - name: Deploy
         uses: peaceiris/actions-gh-pages@v4
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_branch: gh-pages
